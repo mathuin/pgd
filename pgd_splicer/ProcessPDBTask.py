@@ -403,19 +403,37 @@ def atom_noamino(s):
     return s.startswith("ATOM ") and not amino_present(s)
 
 
-class OccupancySelect(Select):
-    """
-    This class implements the occupancy awareness selection.
+# class ChainSelect(Select):
+#     """
+#     This class selects only the chains specified in the selection file.
+#     """
+# 
+#     def __init__(self, chains_filter):
+#         self.chains_filter = chains_filter
+# 
+#     def accept_chain(self, chain):
+#         return (chain.get_id() in self.chains_filter)
 
-    Each disordered residue contains one or more disordered atom structures.
-    These structures contain one or more atoms, each with its own altloc and
-    occupancy values.  As each atom associated with a particular altloc has
-    its own occupancy value, the altloc with the highest average occupancy
-    value is identified.  Atoms with other altloc values are removed from
-    the structure.
+
+class PGDSelect(Select):
+    """
+    This class filters incoming PDB files to include:
+     - only the chains listed in the selection files
+     - only the atoms with the greatest average occupancy per residue
+    and to exclude:
+     - all residues with residue names that are not amino acids
+     - all residues with non-blank hetflags
     """
 
-    best_atoms = {}
+    def __init__(self, chains_filter):
+        self.best_atoms = {}
+        self.chains_filter = chains_filter
+
+    def accept_chain(self, chain):
+        """
+        All chains which are not included in chains_filter are removed.
+        """
+        return (chain.get_id() in self.chains_filter)
 
     def accept_residue(self, residue):
         """
@@ -424,6 +442,17 @@ class OccupancySelect(Select):
         occupancy value per altloc.
         """
 
+        # Only residues that are amino acids are allowed.
+        resname = residue.get_resname()
+        if resname not in AA3to1:
+            return False
+
+        # No non-blank hetflags are allowed.
+        hetflag, resseq, icode = residue.get_id()
+        if hetflag != ' ':
+            return False
+
+        # Calculate the highest average occupancy value per altloc.
         if residue.is_disordered():
             res_occ = {}
             for atom in residue:
@@ -491,14 +520,22 @@ def parseWithBioPython(code, props, chains_filter=None):
     # Be kind; rewind.
     decompressed.seek(0)
 
+    # Remove unused chains from PDB file.
+    # if chains_filter:
+    #     logger.warning('yay chains_filter {}'.format(chains_filter))
+    #     chains_structure = Bio.PDB.PDBParser().get_structure('pdbname', decompressed.name)
+    #     chains_io = PDBIO()
+    #     chains_io.set_structure(chains_structure)
+    #     chains_io.save(decompressed.name, select=ChainSelect(chains_filter))
+
     # Open structure for pre-cleaned PDB file.
-    pre_structure = Bio.PDB.PDBParser().get_structure('pdbname',
-                                                  decompressed.name)
+    select_structure = Bio.PDB.PDBParser().get_structure('pdbname',
+                                                         decompressed.name)
 
     # write new PDB based on conformation changes
     io = PDBIO()
-    io.set_structure(pre_structure)
-    io.save(decompressed.name, select=OccupancySelect())
+    io.set_structure(select_structure)
+    io.save(decompressed.name, select=PGDSelect(chains_filter))
 
     # write PDB to current directory as well
     # import shutil
@@ -520,9 +557,9 @@ def parseWithBioPython(code, props, chains_filter=None):
         chain_id = chain.get_id()
 
         # only process selected chains
-        if chains_filter and not chain_id in chains_filter:
-            logger.debug('skipping chain {}'.format(chain_id))
-            continue
+        # if chains_filter and not chain_id in chains_filter:
+        #     logger.debug('skipping chain {}'.format(chain_id))
+        #     continue
 
         # construct structure for saving chain
         if not chain_id in props['chains']:
@@ -547,15 +584,15 @@ def parseWithBioPython(code, props, chains_filter=None):
 
                 # We can't handle any hetflags. This is primarily to filter
                 # out water, but there can be others as well.
-                if hetflag != ' ':
-                    raise InvalidResidueException("HetCode %r" % hetflag)
+                # if hetflag != ' ':
+                #     raise InvalidResidueException("HetCode %r" % hetflag)
 
                 resname = res.resname
 
                 # We can't deal with residues that aren't of amino acids.
-                if resname not in AA3to1:
-                    raise InvalidResidueException("Bad amino acid %r" %
-                                                  resname)
+                # if resname not in AA3to1:
+                #     raise InvalidResidueException("Bad amino acid %r" %
+                #                                   resname)
 
                 # XXX Get the dictionary of atoms in the Main conformation.
                 # BioPython should do this automatically, but it does not
