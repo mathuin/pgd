@@ -588,6 +588,9 @@ def parseWithBioPython(code, props, chains_filter=None):
     structure = Bio.PDB.PDBParser().get_structure(code,
                                                   decompressed.name)
 
+    if len(structure) == 0:
+        raise Exception("No structure was parsed!")
+
     # dssp can't do multiple models. if we ever need to, we'll have to
     # iterate through them
     dssp = Bio.PDB.DSSP(model=structure[0], pdb_file=decompressed.name,
