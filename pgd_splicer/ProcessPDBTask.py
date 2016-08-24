@@ -411,12 +411,22 @@ class PGDSelect(Select):
 
     """
 
-    def __init__(self, chains_filter=None):
+    def __init__(self, chains_filter=None, logger=None):
         self.best_atoms = {}
         self.chains_filter = chains_filter
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger('').addHandler(logging.NullHandler())
         self.not_in_AA3to1 = []
         self.has_hetflag = []
         self.missing_atom = []
+        self.logger.debug("finished init")
+
+    def __del__(self):
+        self.logger.info("residues not in AA3to1: {}".format(len(self.not_in_AA3to1)))
+        self.logger.info("residues with hetflags: {}".format(len(self.has_hetflag)))
+        self.logger.info("residues missing atoms: {}".format(len(self.missing_atom)))
 
     def accept_chain(self, chain):
         """
@@ -437,8 +447,9 @@ class PGDSelect(Select):
 
         # only process selected chains
         # XXX: disabled
-        # if self.chains_filter and not chain in self.chains_filter:
-        #     return False
+        if self.chains_filter and not chain.get_id() in self.chains_filter:
+            self.logger.debug("chain {} not in chains_filter".format(chain.get_id()))
+            return False
 
         for residue in chain.get_unpacked_list():
 
@@ -446,7 +457,7 @@ class PGDSelect(Select):
             # XXX: disabled
             # resname = residue.resname
             # if resname not in AA3to1:
-            #     # print "residue {} not in AA3to1".format(residue)
+            #     self.logger.debug("residue {} not in AA3to1".format(residue))
             #     self.not_in_AA3to1.append(residue)
             #     continue
 
@@ -454,7 +465,7 @@ class PGDSelect(Select):
             # XXX: disabled
             hetflag, resseq, icode = residue.get_id()
             # if hetflag != ' ':
-            #     # print "residue {} has hetflag".format(residue)
+            #     self.logger.debug("residue {} has hetflag".format(residue))
             #     self.has_hetflag.append(residue)
             #     continue
 
@@ -463,13 +474,13 @@ class PGDSelect(Select):
             # JMT: what about after occupancy check?
             # atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
             # if not (('N' in atoms) and ('CA' in atoms) and ('C' in atoms) and ('O' in atoms)):
-            #     # print "residue {} missing atom".format(residue)
+            #     self.logger.debug("residue {} missing atom".format(residue))
             #     self.missing_atom.append(residue)
             #     continue
 
             # Calculate occupancy for disordered residues.
             if residue.is_disordered():
-                # print "residue: {}".format(residue)
+                self.logger.debug("residue: {}".format(residue))
                 res_occ = {}
                 for atom in residue.get_unpacked_list():
                     if atom.is_disordered():
@@ -481,40 +492,39 @@ class PGDSelect(Select):
                         altloc = atom.get_altloc()
                         occ = atom.get_occupancy()
                         res_occ[name].update({altloc: occ})
-                # print "atom list: {}".format(res_occ)
+                self.logger.debug("atom list: {}".format(res_occ))
 
                 occ_list = {}
                 for occ_vals in [res_occ[k] for k in res_occ if res_occ[k]]:
-                    # print "occ_vals: {}".format(occ_vals)
                     for altloc in occ_vals:
                         try:
                             occ_list[altloc].append(occ_vals[altloc])
                         except KeyError:
                             occ_list[altloc] = [occ_vals[altloc]]
-                # print "altloc list: {}".format(occ_list)
+                self.logger.debug("altloc list: {}".format(occ_list))
 
                 # What altloc has the highest average occupancy in this residue?
                 best_altloc = sorted(occ_list, key=lambda k: sum(occ_list[k])/len(occ_list[k]), reverse=True)[0]
-                # print "best_altloc: {}".format(best_altloc)
+                self.logger.debug("best_altloc: {}".format(best_altloc))
                 occ_altloc = sum(occ_list[best_altloc])/len(occ_list[best_altloc])
-                # print "occ_altloc: {}".format(occ_altloc)
+                self.logger.debug("occ_altloc: {}".format(occ_altloc))
                 best_atoms[residue] = {atom: best_altloc if best_altloc in res_occ[atom] else ' ' for atom in res_occ}
-                # print "best_atoms: {}".format(best_atoms[residue])
+                self.logger.debug("best_atoms: {}".format(best_atoms[residue]))
 
                 # Store the best altloc for all residues sharing this sequence number.
                 try:
                     best_altlocs[resseq].update({residue: occ_altloc})
                 except KeyError:
                     best_altlocs[resseq] = {residue: occ_altloc}
-                # print "best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq])
+                self.logger.debug("best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq]))
 
         # The residue with the best altloc has the best atoms.
         for resseq in best_altlocs:
             altlocs = best_altlocs[resseq]
             best_residue = max(altlocs, key=altlocs.get)
-            # print "best residue for {} is {}".format(resseq, best_residue)
+            self.logger.debug("best residue for {} is {}".format(resseq, best_residue))
             self.best_atoms[best_residue] = best_atoms[best_residue]
-            # print "best atoms for {} are {}".format(resseq, best_atoms[best_residue])
+            self.logger.debug("best atoms for {} are {}".format(resseq, best_atoms[best_residue]))
 
         return True
 
@@ -578,7 +588,7 @@ def parseWithBioPython(code, props, chains_filter=None):
     # write new PDB based on conformation changes
     io = PDBIO()
     io.set_structure(pre_structure)
-    io.save(decompressed.name, select=PGDSelect(chains_filter))
+    io.save(decompressed.name, select=PGDSelect(chains_filter, logger))
 
     # write PDB to current directory as well
     import shutil
