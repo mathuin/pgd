@@ -454,21 +454,19 @@ class PGDSelect(Select):
 
         for residue in chain.get_unpacked_list():
 
-            # Only process residues in AA3to1.
-            # XXX: disabled
-            # resname = residue.resname
-            # if resname not in AA3to1:
-            #     self.logger.debug("residue {} not in AA3to1".format(residue))
-            #     self.not_in_AA3to1.append(residue)
-            #     continue
-
             # Only process residues without hetflags.
-            # XXX: disabled
             hetflag, resseq, icode = residue.get_id()
-            # if hetflag != ' ':
-            #     self.logger.debug("residue {} has hetflag".format(residue))
-            #     self.has_hetflag.append(residue)
-            #     continue
+            if hetflag != ' ':
+                self.logger.debug("residue {} has hetflag".format(residue))
+                self.has_hetflag.append(residue)
+                continue
+
+            # Only process residues in AA3to1.
+            resname = residue.resname
+            if resname not in AA3to1:
+                self.logger.debug("residue {} not in AA3to1".format(residue))
+                self.not_in_AA3to1.append(residue)
+                continue
 
             # Only process residues with all atoms.
             # XXX: disabled
@@ -551,7 +549,11 @@ class PGDSelect(Select):
         """
 
         if atom.is_disordered():
-            return self.best_atoms[atom.get_parent()][atom.name] == atom.get_altloc()
+            if self.best_atoms[atom.get_parent()][atom.name] == atom.get_altloc():
+                atom.set_altloc(' ')
+                return True
+            else:
+                return False
         else:
             return True
 
@@ -583,8 +585,7 @@ def parseWithBioPython(code, props, chains_filter=None):
     decompressed.seek(0)
 
     # Open structure for pre-cleaned PDB file.
-    pre_structure = Bio.PDB.PDBParser().get_structure(code,
-                                                      decompressed.name)
+    pre_structure = Bio.PDB.PDBParser(QUIET=True).get_structure(code, decompressed.name)
 
     # write new PDB based on conformation changes
     io = PDBIO()
@@ -596,8 +597,7 @@ def parseWithBioPython(code, props, chains_filter=None):
     shutil.copy(decompressed.name, '{}-postocc.ent'.format(code))
 
     # Reopen structure from cleaned PDB file.
-    structure = Bio.PDB.PDBParser().get_structure(code,
-                                                  decompressed.name)
+    structure = Bio.PDB.PDBParser(QUIET=True).get_structure(code, decompressed.name)
 
     if len(structure) == 0:
         raise Exception("No structure was parsed!")
@@ -1044,7 +1044,7 @@ if __name__ == '__main__':
     # Parse command line options.
     parser = argparse.ArgumentParser(usage='')
     parser.add_argument('--pipein', help='accept protein values via stdin', nargs='?', type=argparse.FileType('r'), const=sys.stdin)
-    parser.add_argument('--debug', help='enable debug logging to console')
+    parser.add_argument('--debug', help='enable debug logging to console', action='store_true')
     parser.add_argument('--logfile', help='write debug logs to file', type=argparse.FileType('wb', 0))
     # JMT: tasks without pipein not supported at the moment
     # JMT: code chains threshold resolution rfactor rfree [repeat]
