@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import division
+import argparse
 
 if __name__ == '__main__':
     import sys
@@ -1040,46 +1041,45 @@ if __name__ == '__main__':
     Run if file is executed from the command line
     """
 
-    task = ProcessPDBTask()
+    # Parse command line options.
+    parser = argparse.ArgumentParser(usage='')
+    parser.add_argument('--pipein', help='accept protein values via stdin', nargs='?', type=argparse.FileType('r'), const=sys.stdin)
+    parser.add_argument('--debug', help='enable debug logging to console')
+    parser.add_argument('--logfile', help='write debug logs to file', type=argparse.FileType('wb', 0))
+    # JMT: tasks without pipein not supported at the moment
+    # JMT: code chains threshold resolution rfactor rfree [repeat]
+    # chains are a string of chain ids: ABCXYZ
+    args = parser.parse_args()
 
     # Configure logging.
-    logging.basicConfig(level=logging.DEBUG,
-                        format='%(asctime)s %(name)-4s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        filename='ProcessPDB.log',
-                        filemode='w')
+    if args.logfile:
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s %(name)-4s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S',
+                            stream=args.logfile)
 
     # Log all info messages to the console.
     console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
+    console.setLevel(logging.DEBUG if args.debug else logging.INFO)
     formatter = logging.Formatter('%(name)-4s %(levelname)-8s %(message)s')
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
 
     pdbs = []
-
-    argv = sys.argv
-    if len(argv) == 1:
-        print 'Usage:'
-        print '   ProcessPDBTask code chains threshold resolution rfactor rfree [repeat]'
-        print '       chains are a string of chain ids: ABCXYZ'
-        print ''
-        print '   <cmd> | ProcessPDBTask --pipein'
-        print '   piped protein values must be separated by newlines'
-        sys.exit(0)
-
-    elif len(argv) == 2 and argv[1] == '--pipein':
-        for line in sys.stdin:
+    if args.pipein:
+        for line in args.pipein:
             pdbs.append(line)
-
     else:
-        for i in range(1,len(argv),6):
-            try:
-                line = " ".join(argv[i:i+6])
-                pdbs.append(line)
-            except IndexError, e:
-                print e
-                print 'Usage: ProcessPDBTask.py code chain threshold resolution rfactor rfree...'
-                sys.exit(0)
+        print 'PDBs from args not currently supported.'
+        sys.exit(0)
+        # for i in range(1,len(argv),6):
+        #     try:
+        #         line = ' '.join(argv[i:i+6])
+        #         pdbs.append(line)
+        #     except IndexError, e:
+        #         print e
+        #         print 'Usage: ProcessPDBTask.py code chain threshold resolution rfactor rfree...'
+        #         sys.exit(0)
 
+    task = ProcessPDBTask()
     task.work(pdbs)
