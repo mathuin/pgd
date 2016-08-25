@@ -608,8 +608,8 @@ def parseWithBioPython(code, props, chains_filter=None):
     io.save(decompressed.name, select=PGDSelect(chains_filter, logger))
 
     # write PDB to current directory as well
-    import shutil
-    shutil.copy(decompressed.name, '{}-postocc.ent'.format(code))
+    # import shutil
+    # shutil.copy(decompressed.name, '{}-postocc.ent'.format(code))
 
     # Reopen structure from cleaned PDB file.
     structure = Bio.PDB.PDBParser(QUIET=True).get_structure(code, decompressed.name)
