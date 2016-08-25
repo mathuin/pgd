@@ -422,12 +422,14 @@ class PGDSelect(Select):
         self.not_in_AA3to1 = []
         self.has_hetflag = []
         self.missing_atom = []
+        self.no_acceptable_altlocs = []
         self.logger.debug("finished init")
 
     def __del__(self):
         self.logger.info("residues not in AA3to1: {}".format(len(self.not_in_AA3to1)))
         self.logger.info("residues with hetflags: {}".format(len(self.has_hetflag)))
         self.logger.info("residues missing atoms: {}".format(len(self.missing_atom)))
+        self.logger.info("residues with no acceptable altlocs: {}".format(len(self.no_acceptable_altlocs)))
 
     def has_mainchain_atoms(self, residue):
         atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
@@ -527,7 +529,8 @@ class PGDSelect(Select):
                         self.logger.debug("best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq]))
                         break
                 else:
-                    self.logger.error("All altlocs unacceptable")
+                    self.logger.debug("residue {} has no altlocs unacceptable".format(residue))
+                    self.no_acceptable_altlocs.append(residue)
 
         # The residue with the best altloc has the best atoms.
         for resseq in best_altlocs:
