@@ -429,6 +429,10 @@ class PGDSelect(Select):
         self.logger.info("residues with hetflags: {}".format(len(self.has_hetflag)))
         self.logger.info("residues missing atoms: {}".format(len(self.missing_atom)))
 
+    def has_mainchain_atoms(self, residue):
+        atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
+        return (('N' in atoms) and ('CA' in atoms) and ('C' in atoms) and ('O' in atoms))
+
     def accept_chain(self, chain):
         """
         Each disordered residue contains one or more disordered atom structures.
@@ -469,19 +473,18 @@ class PGDSelect(Select):
                 continue
 
             # Only process residues with all atoms.
-            # XXX: disabled
-            # JMT: what about after occupancy check?
-            # atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
-            # if not (('N' in atoms) and ('CA' in atoms) and ('C' in atoms) and ('O' in atoms)):
-            #     self.logger.debug("residue {} missing atom".format(residue))
-            #     self.missing_atom.append(residue)
-            #     continue
+            if not self.has_mainchain_atoms(residue):
+                self.logger.debug("residue {} missing atom".format(residue))
+                self.missing_atom.append(residue)
+                continue
 
             # Calculate occupancy for disordered residues.
             if residue.is_disordered():
                 self.logger.debug("residue: {}".format(residue))
                 res_occ = {}
+                atoms = []
                 for atom in residue.get_unpacked_list():
+                    atoms.append('{}|{}'.format(atom.name, atom.get_altloc()))
                     if atom.is_disordered():
                         name = atom.name
                         try:
@@ -503,19 +506,28 @@ class PGDSelect(Select):
                 self.logger.debug("altloc list: {}".format(occ_list))
 
                 # What altloc has the highest average occupancy in this residue?
-                best_altloc = sorted(occ_list, key=lambda k: sum(occ_list[k])/len(occ_list[k]), reverse=True)[0]
-                self.logger.debug("best_altloc: {}".format(best_altloc))
-                occ_altloc = sum(occ_list[best_altloc])/len(occ_list[best_altloc])
-                self.logger.debug("occ_altloc: {}".format(occ_altloc))
-                best_atoms[residue] = {atom: best_altloc if best_altloc in res_occ[atom] else ' ' for atom in res_occ}
-                self.logger.debug("best_atoms: {}".format(best_atoms[residue]))
-
-                # Store the best altloc for all residues sharing this sequence number.
-                try:
-                    best_altlocs[resseq].update({residue: occ_altloc})
-                except KeyError:
-                    best_altlocs[resseq] = {residue: occ_altloc}
-                self.logger.debug("best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq]))
+                for best_altloc in sorted(occ_list, key=lambda k: sum(occ_list[k])/len(occ_list[k]), reverse=True):
+                    # Does this altloc represent a complete amino acid?
+                    self.logger.debug("best_altloc: {}".format(best_altloc))
+                    occ_altloc = sum(occ_list[best_altloc])/len(occ_list[best_altloc])
+                    self.logger.debug("occ_altloc: {}".format(occ_altloc))
+                    best_atoms[residue] = {atom: best_altloc if best_altloc in res_occ[atom] else ' ' for atom in res_occ}
+                    self.logger.debug("best_atoms: {}".format(best_atoms[residue]))
+                    for atom, altloc in best_atoms[residue].iteritems():
+                        key = '{}|{}'.format(atom, altloc)
+                        if key not in atoms:
+                            self.logger.debug("altloc {} missing atoms".format(best_altloc))
+                            break
+                    else:
+                        # Store the best altloc for all residues sharing this sequence number.
+                        try:
+                            best_altlocs[resseq].update({residue: occ_altloc})
+                        except KeyError:
+                            best_altlocs[resseq] = {residue: occ_altloc}
+                        self.logger.debug("best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq]))
+                        break
+                else:
+                    self.logger.error("All altlocs unacceptable")
 
         # The residue with the best altloc has the best atoms.
         for resseq in best_altlocs:
