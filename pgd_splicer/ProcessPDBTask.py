@@ -619,7 +619,7 @@ def parseWithBioPython(code, props, chains_filter=None):
 
     # dssp can't do multiple models. if we ever need to, we'll have to
     # iterate through them
-    dssp = Bio.PDB.DSSP(model=structure[0], pdb_file=decompressed.name,
+    dssp = Bio.PDB.DSSP(model=structure[0], in_file=decompressed.name,
                         dssp='dsspcmbi')
 
     if not dssp.keys():
@@ -786,13 +786,13 @@ def parseWithBioPython(code, props, chains_filter=None):
 
                 # Other B Averages
                 #    Bm - Average of bfactors in main chain.
-                #    Bm - Average of bfactors in side chain.
+                #    Bs - Average of bfactors in side chain.
                 main_chain = []
                 side_chain = []
                 for name in atoms:
-                    if name in ('N', 'CA', 'C', 'O','OXT'):
+                    if name in ('N', 'CA', 'C', 'O', 'OXT'):
                         main_chain.append(atoms[name].get_bfactor())
-                    elif name in ('H'):
+                    elif name[0] == 'H':
                         continue
                     else:
                         side_chain.append(atoms[name].get_bfactor())
@@ -810,7 +810,7 @@ def parseWithBioPython(code, props, chains_filter=None):
                 #    issue link - https://code.osuosl.org/issues/17565
                 occ_m, occ_scs = [], []
                 for name in atoms:
-                    if name in ('N', 'CA', 'C', 'O','OXT', 'CB'):
+                    if name in ('N', 'CA', 'C', 'O', 'OXT', 'CB'):
                         occ_m.append(atoms[name].get_occupancy())
                     elif name in ('H'):
                         continue
@@ -823,7 +823,7 @@ def parseWithBioPython(code, props, chains_filter=None):
                 if occ_scs != []:
                     res_dict['occscs'] = min(occ_scs)
 
-                if res_dict['aa'] == 'g' or res_dict['aa'] == 'a' :
+                if res_dict['aa'] == 'g' or res_dict['aa'] == 'a':
                     res_dict['occscs'] = 1.0
 
                 # CHI corrections - Some atoms have symettrical values
