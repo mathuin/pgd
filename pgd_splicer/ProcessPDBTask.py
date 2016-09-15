@@ -797,11 +797,13 @@ def parseWithBioPython(code, props, chains_filter=None):
                     else:
                         side_chain.append(atoms[name].get_bfactor())
 
+                # Should use floating point division not floor division.
+                # https://code.osuosl.org/issues/18261
                 if main_chain != []:
-                    res_dict['bm'] = sum(main_chain) // len(main_chain)
+                    res_dict['bm'] = sum(main_chain) / len(main_chain)
 
                 if side_chain != []:
-                    res_dict['bs'] = sum(side_chain) // len(side_chain)
+                    res_dict['bs'] = sum(side_chain) / len(side_chain)
 
                 #    occscs - Min of side chain
                 #    occm   - Min of main chain
