@@ -1,5 +1,5 @@
 biopython
-django-registration
+django-registration-redux==1.1
 django==1.6
 selenium
 mysql-python
@@ -9,3 +9,4 @@ pytz
 Sphinx
 python-decouple==2.3
 docker-compose==1.2.0
+dj-database-url

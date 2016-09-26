@@ -15,16 +15,9 @@ MANAGERS = ADMINS
 
 # At this time only MySQL is supported.  When other databases are
 # supported, these settings will be refactored.
-
+import dj_database_url
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',  # 'postgresql_psycopg2'
-        'NAME': config('MYSQL_ENV_MYSQL_DATABASE', default='db'),
-        'USER': config('MYSQL_ENV_MYSQL_USER', default='root'),
-        'PASSWORD': config('MYSQL_ENV_MYSQL_PASSWORD', default='scott'),
-        'HOST': config('MYSQL_PORT_3306_TCP_ADDR', default=''),
-        'PORT': config('MYSQL_PORT_3306_TCP_PORT', default=''),
-    }
+    'default': dj_database_url.config(default=config('DATABASE_URL', ''))
 }
 import sys
 if 'test' in sys.argv:
@@ -128,6 +121,7 @@ MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
 )
 
 ROOT_URLCONF = config('ROOT_URLCONF', default='pgd.urls')
@@ -146,6 +140,7 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.staticfiles',
     'django.contrib.admin',
+    'registration',
     'pgd_core',
     'pgd_search',
     'pgd_splicer',
@@ -195,4 +190,10 @@ EMAIL_HOST = config('EMAIL_HOST', default='smtp.osuosl.org')
 EMAIL_PORT = config('EMAIL_PORT', default='25')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='registration@pgd.science.oregonstate.edu')
 SERVER_EMAIL = config('SERVER_EMAIL', default='pgd@pgd.science.oregonstate.edu')
-LOGIN_REDIRECT_URL= '%s/search/' % SITE_ROOT
+LOGIN_REDIRECT_URL = '%s/search/' % SITE_ROOT
+
+# FTP settings
+PDB_FTP_HOST = config('PDB_FTP_HOST', default='ftp.wwpdb.org')
+PDB_REMOTE_DIR = config('PDB_REMOTE_DIR', default='/pub/pdb/data/structures/divided/pdb')
+PDB_LOCAL_DIR = config('PDB_LOCAL_DIR', default='./pdb')
+PDB_TMP_DIR = config('PDB_TMP_DIR', default='./tmp')

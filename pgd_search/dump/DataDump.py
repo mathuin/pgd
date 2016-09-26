@@ -15,7 +15,7 @@ import math
 from django.conf import settings
 from django.core.paginator import Paginator
 
-from pgd_core import residue_indexes
+from pgd_core.util import residue_indexes
 from pgd_search.models import *
 from pgd_constants import AA_CHOICES
 from pgd_splicer.sidechain import sidechain_length_relationship_list, sidechain_angle_relationship_list
@@ -28,14 +28,16 @@ def db_to_ascii(field):
 
 
 # A list of values that should not be printed out
-FIELDS = ['aa','a1','a2','a3','a4','a5','a6','a7','L1','L2','L3','L4','L5','ss','phi', 'psi', 'ome','omep', 'chi1','chi2','chi3','chi4','chi5', 'bm', 'bs', 'bg', 'h_bond_energy', 'zeta']
+FIELDS = ['aa','a1','a2','a3','a4','a5','a6','a7','L1','L2','L3','L4','L5',
+          'ss','phi', 'psi', 'ome','omep', 'chi1','chi2','chi3','chi4','chi5',
+          'bm', 'bs', 'bg', 'occm', 'occscs', 'h_bond_energy', 'zeta']
 for field in  sidechain_length_relationship_list:
     FIELDS.append('sidechain_%s' % field)
 for field in sidechain_angle_relationship_list:
     FIELDS.append('sidechain_%s' % field)
 
 FIELD_LABEL_REPLACEMENTS = {
-    'h_bond_energy':'H Bond', 
+    'h_bond_energy':'H Bond',
     'aa':'AA',
     'L1':u'C(-1)N',
     'L2':u'N-CA',
@@ -72,6 +74,8 @@ FIELD_LABEL_REPLACEMENTS = {
     'bm_i':'bm include',
     'bs_i':'bs include',
     'bg_i':'bg include',
+    'occm_i' : 'occm include',
+    'occscs_i': 'occscs include',
     'h_bond_energy_i':'H bond energy include',
     'zeta_i':'zeta include'
     }
@@ -86,17 +90,24 @@ for field in sidechain_angle_relationship_list:
 
 
 FIELD_VALUE_REPLACEMENTS = {'aa':AA_CHOICES}
-RESIDUE_FIELDS =    ['a1','a1_i','a2','a2_i','a3','a3_i','a4','a4_i','a5','a5_i','a6','a6_i','a7',
-                    'a7_i','L1','L1_i','L2','L2_i','L3','L3_i','L4','L4_i','L5','L5_i','ss','phi', 'psi','phi_i', 'ome', 
-                    'ome_i', 'omep', 'omep_i', 'chi1','chi1_i','chi2','chi2_i','chi3','chi3_i','chi4','chi4_i', 'chi5','chi5_i', 'bm','bm_i','bs','bs_i','bg','bg_i', 'h_bond_energy','h_bond_energy_i', 'zeta','zeta_i']
+RESIDUE_FIELDS =    ['a1','a1_i','a2','a2_i','a3','a3_i','a4','a4_i','a5',
+                     'a5_i','a6','a6_i','a7','a7_i','L1','L1_i','L2','L2_i',
+                     'L3','L3_i','L4','L4_i','L5','L5_i','ss','phi','psi',
+                     'phi_i', 'ome', 'ome_i', 'omep', 'omep_i','chi1','chi1_i',
+                     'chi2','chi2_i','chi3','chi3_i','chi4','chi4_i','chi5',
+                     'chi5_i', 'bm','bm_i','bs','bs_i','bg','bg_i', 'occm', 
+                     'occm_i', 'occscs', 'occscs_i', 'h_bond_energy',
+                     'h_bond_energy_i', 'zeta','zeta_i']
 for field in  sidechain_length_relationship_list:
     RESIDUE_FIELDS.append('sidechain_%s' % field)
     RESIDUE_FIELDS.append('sidechain_%s_i' % field)
 for field in sidechain_angle_relationship_list:
     RESIDUE_FIELDS.append('sidechain_%s' % field)
     RESIDUE_FIELDS.append('sidechain_%s_i' % field)
-SS_KEY_LIST = ['&alpha; helix','3<sub>10</sub> helix','&beta; sheet','Turn','Bend','&beta;-bridge','&pi; helix']
-SS_HEADER = [u'Alpha Helix',u'3_10 Helix',u'Beta Sheet',u'Turn',u'Bend','Beta-Bridge','Pi Helix']
+SS_KEY_LIST = ['&alpha; helix','3<sub>10</sub> helix','&beta; sheet','Turn'
+               'Bend','&beta;-bridge','&pi; helix']
+SS_HEADER = [u'Alpha Helix',u'3_10 Helix',u'Beta Sheet',u'Turn',u'Bend'
+             'Beta-Bridge','Pi Helix']
 
 class BufferThread(Thread):
     """
@@ -120,7 +131,7 @@ class BufferThread(Thread):
         page_num = self.parent.current_page
         self.parent.current_page += 1
 
-        
+
 
         for segment in self.parent.pages.page(page_num).object_list:
             self.parent.count += 1
@@ -157,7 +168,8 @@ class BufferThread(Thread):
                         if field[:9] == 'sidechain':
                             sidechain = getattr(residue, field[:13])
                             if sidechain:
-                                parts.append(str(getattr(sidechain, field[15:].replace('-','_'))))
+                                parts.append(str(getattr(sidechain,
+                                                         field[15:].replace('-','_'))))
                             else:
                                 parts.append('')
                         else:
@@ -169,7 +181,7 @@ class BufferThread(Thread):
                 with self.parent.buffer_lock:
                     self.parent.buffer.append(string)
 
-        # update parents buffer with new lines then release this thread so 
+        # update parents buffer with new lines then release this thread so
         # parent can create a new thread if needed
         with self.parent.buffer_lock:
             if self.parent.current_page > self.parent.page_max:
@@ -181,7 +193,7 @@ class BufferThread(Thread):
 
 class Dump():
     """
-    Class that encapsulates a dump of a queryset.  This class turns the 
+    Class that encapsulates a dump of a queryset.  This class turns the
     results of the query set into an iterable returning sections of text
     that make up the dump file.
     """
@@ -209,7 +221,7 @@ class Dump():
         self.nEOF = True
         self.create_meta_data(search)
         self.create_header()
-        
+
 
         #calculate list of iValues
         self.iValues = [
@@ -220,7 +232,7 @@ class Dump():
                 0 - (search.segmentLength-1)/2, #start
                 int(math.ceil((search.segmentLength-1) / 2.0))+1, #stop
             )
-        ] 
+        ]
 
         #calculate iIndex
         self.iIndex = int(math.ceil(settings.SEGMENT_SIZE/2.0)-1)
@@ -244,7 +256,7 @@ class Dump():
         self.buffer.append(string)
         parts = []
         indexes = residue_indexes(search.segmentLength)
-        
+
         #The rest of the loops fill in the data
         i=0
         for residue in search.residues:
@@ -253,7 +265,7 @@ class Dump():
             for key in RESIDUE_FIELDS:
                 if key[:9] == 'sidechain':
                     key = key[10:]
-                
+
                 if key in residue:
                     if key is 'ss':
                         parts.append(''.join(residue[key]))
@@ -261,15 +273,15 @@ class Dump():
                         parts.append(str(residue[key]))
                 else:
                     parts.append('')
-                
+
             #At the end of a row, so join string and add newline
             string = '%s\n' % '\t'.join(parts)
             self.buffer.append(string)
             parts = []
             i+=1
         self.buffer.append("***END_META_DATA***\n")
-    
-    
+
+
     def create_header(self):
         """
         Creates the header for the dump.  This must happen before any calls to

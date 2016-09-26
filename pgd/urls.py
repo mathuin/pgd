@@ -1,7 +1,9 @@
-from django.conf.urls import *
-#from django.views.generic.simple import direct_to_template
-import settings
+from django.conf.urls import include, url, patterns
+from django.conf import settings
 from django.contrib import admin
+from django.contrib.auth import views as auth_views
+from django.core.urlresolvers import reverse_lazy
+from views import ReferencesView, ContactUsView, NewsView, WelcomeView
 admin.autodiscover()
 
 #from pgd import VERSION
@@ -16,17 +18,19 @@ urlpatterns = patterns('',
     # (r'^admin/doc/', include('django.contrib.admindocs.urls')),
 
     # Uncomment the next line to enable the admin:
-    #(r'^admin/(.*)', admin.site.root),
-    (r'^accounts/', include('registration.backends.default.urls')),
-    (r'^search/', include('pgd_search.urls')),
+    #(r'^admin/', include(admin.site.urls)),
 
-    # Static pages:
-    (r'^references/$', 'pgd.views.references'),
-    (r'^contactus/$', 'pgd.views.contactus'),
-    (r'^news/$', 'pgd.views.news'),
+    url(r'^search/', include('pgd_search.urls'), name='pgd_search'),
+
+    url(r'^accounts/', include('pgd_core.urls')),
     
+    # Static pages:
+    (r'^references/$', ReferencesView.as_view()),
+    (r'^contactus/$', ContactUsView.as_view()),
+    (r'^news/$', NewsView.as_view()),
+
     #default url
-    (r'^$','pgd.views.welcome'),
+    url(r'^$', WelcomeView.as_view(), name='pgd_home'),
 )
 
 #The following is used to serve up local media files like images

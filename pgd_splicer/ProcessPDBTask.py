@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import division
+import argparse
 
 if __name__ == '__main__':
     import sys
@@ -18,6 +19,7 @@ if __name__ == '__main__':
     # ==========================================================
 
 from datetime import datetime
+from django.utils import timezone
 from gzip import GzipFile
 from math import degrees, sqrt
 from multiprocessing import Pool
@@ -25,11 +27,15 @@ from operator import itemgetter
 import os
 import sys
 from tempfile import NamedTemporaryFile
+import logging
 
 import Bio.PDB
-from Bio.PDB import calc_angle as pdb_calc_angle
+from Bio.PDB import calc_angle as pdb_calc_angle, PDBIO
 from Bio.PDB import calc_dihedral as pdb_calc_dihedral
+from Bio.PDB.PDBIO import Select
 from django.db import transaction
+
+from tools import localfile
 
 from pgd_core.models import (Protein as ProteinModel, Chain as ChainModel,
                              Residue as ResidueModel, Sidechain_ARG,
@@ -125,19 +131,17 @@ class ProcessPDBTask():
         return self.finished_proteins / self.total_proteins * 100
 
 
-    def work(self, **kwargs):
+    def work(self, pdbs):
         """
         Work function - expects a list of pdb file prefixes.
         """
         # process a single protein dict, or a list of proteins
-        pdbs = kwargs['data']
-
-        print 'processing :', len(pdbs)
-
 
         if not isinstance(pdbs, list):
             pdbs = [pdbs]
-        #print 'PDBS TO PROCESS:', pdbs
+
+        logging.info("processing {} proteins".format(len(pdbs)))
+
         self.total_proteins = len(pdbs)
         skipped = 0
         imported = 0
@@ -158,43 +162,58 @@ class ProcessPDBTask():
             elapsed = now - started
             if int(percent):
                 remaining = elapsed * 100 // int(percent)
-		remaining -= elapsed
+                remaining -= elapsed
             else:
                 remaining = elapsed * 100
-            print "-" * 42
-            print "Processed protein %s of %s" % (self.finished_proteins,
-                                                  self.total_proteins)
-            print "%s imported, %s skipped (%0.6f%%)" % (imported, skipped,
-                                                         percent)
-            print "%s elapsed, %s remaining" % (elapsed, remaining)
-            print "-" * 42
+            logging.info("-" * 42)
+            logging.info("processed protein {} of {}".format(self.finished_proteins, self.total_proteins))
+            logging.info("{} imported, {} skipped ({:f}%)".format(imported, skipped, percent))
+            logging.info("{} elapsed, {} remaining".format(elapsed, remaining))
+            logging.info("-" * 42)
 
-        print 'ProcessPDBTask - Processing Complete'
+        logging.info('processing complete: {} elapsed, {} imported, {} skipped'.format(elapsed, imported, skipped))
 
         # return only the code of proteins inserted or updated
         # we no longer need to pass any data as it is contained in the database
         # for now assume everything was updated
-        codes = {'pdbs':[p['code'] for p in pdbs]}
-        return codes
+        return pdbs
 
 
-def workhorse(data):
+def workhorse(line):
     """
     Update a single protein entry.
 
     This is a viable entrypoint for parallelizing the process.
     """
 
+    # Break out selection line data here.
+    values = line.split(' ')
+
+    data = {
+        'code': values[0],
+        'chains': [c for c in values[1]],
+        'threshold': float(values[2]),
+        'resolution': float(values[3]),
+        'rfactor': float(values[4]),
+        'rfree': float(values[5])
+    }
+
+    logger = logging.getLogger(values[0])
+    pdb = {
+        'data': data,
+        'logger': logger
+        }
+
     # only update pdbs if they are newer
-    if pdb_file_is_newer(data):
-        return process_pdb(data)
+    if pdb_file_is_newer(pdb):
+        return process_pdb(pdb)
     else:
-        print 'INFO: Skipping up-to-date PDB: %s' % data['code']
+        logger.info('pdb file is not newer')
         return False
 
 
 @transaction.commit_manually
-def process_pdb(data):
+def process_pdb(pdb):
     """
     Process an individual pdb file
     """
@@ -203,27 +222,28 @@ def process_pdb(data):
     # added to it as the protein is processed.  This prevents memory leaks
     # due to the original dict having a reference held outside this method.
     # e.g. if it were looped over with a large list of PDBs
-    data = data.copy()
+    # data = data.copy()
+    data = pdb['data']
+    logger = pdb['logger']
 
     try:
         residue_props = None
         code = data['code']
         chains_filter = data.get("chains")
-        filename = 'pdb%s.ent.gz' % code.lower()
-        print '    Processing: ', code
+        logger.debug('process_pdb')
 
         # update datastructure
         data['chains'] = {}
 
         # 1) parse with bioPython
-        data = parseWithBioPython(filename, data, chains_filter)
+        data = parseWithBioPython(code, data, chains_filter)
 
         # 2) Create/Get Protein and save values
         try:
             protein = ProteinModel.objects.get(code=code)
-            print '  Existing protein: ', code
+            logger.debug('protein exists')
         except ProteinModel.DoesNotExist:
-            print '  Creating protein: ', code
+            logger.debug('protein does not exist')
             protein = ProteinModel()
         protein.code       = code
         protein.threshold  = float(data['threshold'])
@@ -239,9 +259,9 @@ def process_pdb(data):
             chainId = '%s%s' % (protein.code, chaincode)
             try:
                 chain = protein.chains.get(id=chainId)
-                print '   Existing Chain: %s' % chaincode
+                logger.debug('{}: chain exists'.format(chaincode))
             except ChainModel.DoesNotExist:
-                print '   Creating Chain: %s' % chaincode
+                logger.debug('{}: chain does not exist'.format(chaincode))
                 chain = ChainModel()
                 chain.id      = chainId
                 chain.protein = protein
@@ -252,20 +272,20 @@ def process_pdb(data):
             #create dictionary of chains for quick access
             chains[chaincode] = chain
 
-
             # 4) iterate through residue data creating residues
             for residue_props in sorted(residues.values(), key=itemgetter("chainIndex")):
 
                 # 4a) find the residue object so it can be updated or create a new one
                 try:
                     residue = chain.residues.get(oldID=str(residue_props['oldID']))
+                    logger.debug('{}: residue exists'.format(residue))
                 except ResidueModel.DoesNotExist:
                     #not found, create new residue
-                    #print 'New Residue'
                     residue = ResidueModel()
                     residue.protein = protein
                     residue.chain   = chain
                     residue.chainID = chain.id[4]
+                    # logger.debug('{}: residue does not exist'.format(residue))
 
                 # 4b) copy properties into a residue object
                 #     property keys should match property name in object
@@ -300,16 +320,19 @@ def process_pdb(data):
 
 
                 old_residue = residue
-            print '    %s proteins' % len(residues)
+            logger.debug('{}: {} residues'.format(chainId, len(residues)))
 
 
     except Exception, e:
         import traceback
         exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-        print "*** print_tb:"
-        print residue_props
-        traceback.print_tb(exceptionTraceback, limit=10, file=sys.stdout)
-        print 'EXCEPTION in Residue: %s %s %s' % (code, e.__class__, e)
+        from cStringIO import StringIO
+        tb = StringIO()
+        traceback.print_tb(exceptionTraceback, limit=10, file=tb)
+        logger.error('{}: EXCEPTION in Residue: {} {}'.format(code, e.__class__, e))
+        logger.error('{}: PROPS: {}'.format(code, residue_props))
+        logger.error('{}: TRACEBACK: {}'.format(code, tb.getvalue()))
+        tb.close()
         transaction.rollback()
         return False
 
@@ -318,7 +341,7 @@ def process_pdb(data):
     return True
 
 
-def pdb_file_is_newer(data):
+def pdb_file_is_newer(pdb):
     """
     Compares if the pdb file used as an input is newer than data already
     in the database.
@@ -327,14 +350,15 @@ def pdb_file_is_newer(data):
     processed.
     """
 
-    code =  data['code']
-    path = './pdb/pdb%s.ent.gz' % code.lower()
-    print path
-    if os.path.exists(path):
-        pdb_date = datetime.fromtimestamp(os.path.getmtime(path))
+    data = pdb['data']
+    logger = pdb['logger']
+    code = data['code']
+    lfile = localfile(code)
+    if os.path.exists(lfile):
+        pdb_date = timezone.make_aware(datetime.fromtimestamp(os.path.getmtime(lfile)), timezone.get_default_timezone())
 
     else:
-        print 'ERROR - File not found'
+        logger.error('File not found: {}'.format(lfile))
         return False
     try:
         protein = ProteinModel.objects.get(code=code)
@@ -344,13 +368,14 @@ def pdb_file_is_newer(data):
         return True
 
     data['pdb_date'] = pdb_date
-    return protein.pdb_date < pdb_date and str(protein.pdb_date) != str(pdb_date)[:19]
+
+    return protein.pdb_date < pdb_date
 
 
 def amino_present(s):
     """
     Whether a given line contains a valid amino acid.
-    
+
     NB: "SEC" is a valid amino acid, regardless of its absence from
     AA3to1.
 
@@ -379,38 +404,222 @@ def atom_noamino(s):
     return s.startswith("ATOM ") and not amino_present(s)
 
 
-def parseWithBioPython(path, props, chains_filter=None):
+class PGDSelect(Select):
+    """
+    This class performs three tasks:
+     * it removes residues which do not work with this software, and
+     * it selects the best atoms based on highest average occupancy.
+
+    """
+
+    def __init__(self, chains_filter=None, logger=None):
+        self.best_atoms = {}
+        self.chains_filter = chains_filter
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger('').addHandler(logging.NullHandler())
+        self.not_in_AA3to1 = []
+        self.has_hetflag = []
+        self.missing_atom = []
+        self.no_acceptable_altlocs = []
+        self.logger.debug("finished init")
+
+    def __del__(self):
+        self.logger.info("residues not in AA3to1: {}".format(len(self.not_in_AA3to1)))
+        self.logger.info("residues with hetflags: {}".format(len(self.has_hetflag)))
+        self.logger.info("residues missing atoms: {}".format(len(self.missing_atom)))
+        self.logger.info("residues with no acceptable altlocs: {}".format(len(self.no_acceptable_altlocs)))
+
+    def has_mainchain_atoms(self, residue):
+        atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
+        return (('N' in atoms) and ('CA' in atoms) and ('C' in atoms) and ('O' in atoms))
+
+    def accept_chain(self, chain):
+        """
+        Each disordered residue contains one or more disordered atom structures.
+        These structures contain one or more atoms, each with its own altloc and
+        occupancy values.  As each atom associated with a particular altloc has
+        its own occupancy value, the altloc with the highest average occupancy
+        value is identified.  Atoms with other altloc values are removed from
+        the structure.
+
+        Because the occupancy value is calculated across all residues with a
+        given sequence number, the calculation must occur in the chain
+        acceptance method.
+        """
+
+        best_atoms = {}
+        best_altlocs = {}
+
+        # only process selected chains
+        # XXX: disabled
+        if self.chains_filter and not chain.get_id() in self.chains_filter:
+            self.logger.debug("chain {} not in chains_filter".format(chain.get_id()))
+            return False
+
+        for residue in chain.get_unpacked_list():
+
+            # Only process residues without hetflags.
+            hetflag, resseq, icode = residue.get_id()
+            if hetflag != ' ':
+                self.logger.debug("residue {} has hetflag".format(residue))
+                self.has_hetflag.append(residue)
+                continue
+
+            # Only process residues in AA3to1.
+            resname = residue.resname
+            if resname not in AA3to1:
+                self.logger.debug("residue {} not in AA3to1".format(residue))
+                self.not_in_AA3to1.append(residue)
+                continue
+
+            # Only process residues with all atoms.
+            if not self.has_mainchain_atoms(residue):
+                self.logger.debug("residue {} missing atom".format(residue))
+                self.missing_atom.append(residue)
+                continue
+
+            # Calculate occupancy for disordered residues.
+            if residue.is_disordered():
+                self.logger.debug("residue: {}".format(residue))
+                res_occ = {}
+                atoms = []
+                for atom in residue.get_unpacked_list():
+                    atoms.append('{}|{}'.format(atom.name, atom.get_altloc()))
+                    if atom.is_disordered():
+                        name = atom.name
+                        try:
+                            res_occ[name]
+                        except KeyError:
+                            res_occ[name] = {}
+                        altloc = atom.get_altloc()
+                        occ = atom.get_occupancy()
+                        res_occ[name].update({altloc: occ})
+                self.logger.debug("atom list: {}".format(res_occ))
+
+                occ_list = {}
+                for occ_vals in [res_occ[k] for k in res_occ if res_occ[k]]:
+                    for altloc in occ_vals:
+                        try:
+                            occ_list[altloc].append(occ_vals[altloc])
+                        except KeyError:
+                            occ_list[altloc] = [occ_vals[altloc]]
+                self.logger.debug("altloc list: {}".format(occ_list))
+
+                # What altloc has the highest average occupancy in this residue?
+                for best_altloc in sorted(occ_list, key=lambda k: sum(occ_list[k])/len(occ_list[k]), reverse=True):
+                    # Does this altloc represent a complete amino acid?
+                    self.logger.debug("best_altloc: {}".format(best_altloc))
+                    occ_altloc = sum(occ_list[best_altloc])/len(occ_list[best_altloc])
+                    self.logger.debug("occ_altloc: {}".format(occ_altloc))
+                    best_atoms[residue] = {atom: best_altloc if best_altloc in res_occ[atom] else ' ' for atom in res_occ}
+                    self.logger.debug("best_atoms: {}".format(best_atoms[residue]))
+                    for atom, altloc in best_atoms[residue].iteritems():
+                        key = '{}|{}'.format(atom, altloc)
+                        if key not in atoms:
+                            self.logger.debug("altloc {} missing atoms".format(best_altloc))
+                            break
+                    else:
+                        # Store the best altloc for all residues sharing this sequence number.
+                        try:
+                            best_altlocs[resseq].update({residue: occ_altloc})
+                        except KeyError:
+                            best_altlocs[resseq] = {residue: occ_altloc}
+                        self.logger.debug("best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq]))
+                        break
+                else:
+                    self.logger.debug("residue {} has no altlocs unacceptable".format(residue))
+                    self.no_acceptable_altlocs.append(residue)
+
+        # The residue with the best altloc has the best atoms.
+        for resseq in best_altlocs:
+            altlocs = best_altlocs[resseq]
+            best_residue = max(altlocs, key=altlocs.get)
+            self.logger.debug("best residue for {} is {}".format(resseq, best_residue))
+            self.best_atoms[best_residue] = best_atoms[best_residue]
+            self.logger.debug("best atoms for {} are {}".format(resseq, best_atoms[best_residue]))
+
+        return True
+
+    def accept_residue(self, residue):
+        """
+        This method uses the information generated by accept_chain and stored
+        in best_atoms to determine which disordered residue is selected to
+        represent that residue in the chain.
+        """
+
+        if residue.is_disordered():
+            return residue in self.best_atoms
+        else:
+            if residue in self.has_hetflag or residue in self.not_in_AA3to1 or residue in self.missing_atom:
+                return False
+            return True
+
+    def accept_atom(self, atom):
+        """
+        This method uses the information generated by accept_chain and stored
+        in best_atoms to determine which disordered atom is selected to
+        represent that atom in the residue.
+        """
+
+        if atom.is_disordered():
+            if self.best_atoms[atom.get_parent()][atom.name] == atom.get_altloc():
+                atom.set_altloc(' ')
+                return True
+            else:
+                return False
+        else:
+            return True
+
+
+def parseWithBioPython(code, props, chains_filter=None):
     """
     Parse values from file that can be parsed using BioPython library
     @return a dict containing the properties that were processed
     """
 
-    pdb = './pdb'
+    logger = logging.getLogger(code)
 
-    full_path = os.path.abspath(os.path.join(pdb, path))
+    lfile = localfile(code)
 
     chains = props['chains']
 
     decompressed = NamedTemporaryFile()
-    gunzipped = GzipFile(full_path)
+    gunzipped = GzipFile(lfile)
 
     # Go through, one line at a time, and discard lines that have the bad
     # HETATM pattern. This is largely for 2VQ1, see #8319 for details.
     # Also remove any ATOM lines with invalid amino acids.
     # See #17223 for details.
     for line in gunzipped:
-	if not hetatm_amino(line) and not atom_noamino(line):
+        if not hetatm_amino(line) and not atom_noamino(line):
             decompressed.write(line)
 
     # Be kind; rewind.
     decompressed.seek(0)
 
-    structure = Bio.PDB.PDBParser().get_structure('pdbname',
-                                                  decompressed.name)
+    # Open structure for pre-cleaned PDB file.
+    pre_structure = Bio.PDB.PDBParser(QUIET=True).get_structure(code, decompressed.name)
+
+    # write new PDB based on conformation changes
+    io = PDBIO()
+    io.set_structure(pre_structure)
+    io.save(decompressed.name, select=PGDSelect(chains_filter, logger))
+
+    # write PDB to current directory as well
+    # import shutil
+    # shutil.copy(decompressed.name, '{}-postocc.ent'.format(code))
+
+    # Reopen structure from cleaned PDB file.
+    structure = Bio.PDB.PDBParser(QUIET=True).get_structure(code, decompressed.name)
+
+    if len(structure) == 0:
+        raise Exception("No structure was parsed!")
 
     # dssp can't do multiple models. if we ever need to, we'll have to
     # iterate through them
-    dssp = Bio.PDB.DSSP(model=structure[0], pdb_file=decompressed.name,
+    dssp = Bio.PDB.DSSP(model=structure[0], in_file=decompressed.name,
                         dssp='dsspcmbi')
 
     if not dssp.keys():
@@ -421,14 +630,14 @@ def parseWithBioPython(path, props, chains_filter=None):
 
         # only process selected chains
         if chains_filter and not chain_id in chains_filter:
-            print 'Skipping Chain: %s' % chain_id
+            logger.debug('skipping chain {}'.format(chain_id))
             continue
 
         # construct structure for saving chain
         if not chain_id in props['chains']:
             residues = {}
             props['chains'][chain_id] = residues
-            print 'PROCESSING CHAIN [%s]' % chain, len(chain)
+            logger.debug('processing chain {} ({} residues)'.format(chain, len(chain)))
 
         newID = 0
 
@@ -455,16 +664,16 @@ def parseWithBioPython(path, props, chains_filter=None):
                 # We can't deal with residues that aren't of amino acids.
                 if resname not in AA3to1:
                     raise InvalidResidueException("Bad amino acid %r" %
-                                                  resname)
+                                                 resname)
 
                 # XXX Get the dictionary of atoms in the Main conformation.
                 # BioPython should do this automatically, but it does not
                 # always choose the main conformation.  Leading to some
                 # Interesting results
+                # Occupancy selection code renders altloc choice unnecessary.
                 atoms = {}
                 for atom in res.get_unpacked_list():
-                    if atom.get_altloc() in ('A', ' '):
-                        atoms[atom.name] = atom
+                    atoms[atom.name] = atom
 
                 # Exclude water residues
                 # Exclude any Residues that are missing _ANY_ of the
@@ -495,8 +704,8 @@ def parseWithBioPython(path, props, chains_filter=None):
                 chain = res.get_parent().get_id()
                 key = chain, (hetflag, res_id, icode)
                 if key in dssp:
-                    (residue_dssp, secondary_structure, accessibility,
-                     relative_accessibility, phi, psi) = dssp[key]
+                    (secondary_structure, accessibility,
+                     relative_accessibility, phi, psi) = dssp[key][2:7]
                 else:
                     raise InvalidResidueException("Key %r not in DSSP" %
                                                   (key,))
@@ -577,23 +786,47 @@ def parseWithBioPython(path, props, chains_filter=None):
 
                 # Other B Averages
                 #    Bm - Average of bfactors in main chain.
-                #    Bm - Average of bfactors in side chain.
+                #    Bs - Average of bfactors in side chain.
                 main_chain = []
                 side_chain = []
                 for name in atoms:
-                    if name in ('N', 'CA', 'C', 'O','OXT'):
+                    if name in ('N', 'CA', 'C', 'O', 'OXT'):
                         main_chain.append(atoms[name].get_bfactor())
-                    elif name in ('H'):
+                    elif name[0] == 'H':
                         continue
                     else:
                         side_chain.append(atoms[name].get_bfactor())
 
+                # Should use floating point division not floor division.
+                # https://code.osuosl.org/issues/18261
                 if main_chain != []:
-                    res_dict['bm'] = sum(main_chain) // len(main_chain)
+                    res_dict['bm'] = sum(main_chain) / len(main_chain)
 
                 if side_chain != []:
-                    res_dict['bs'] = sum(side_chain) // len(side_chain)
+                    res_dict['bs'] = sum(side_chain) / len(side_chain)
 
+                #    occscs - Min of side chain
+                #    occm   - Min of main chain
+                #    occ_m  - List containing main chain occupancy values
+                #    occ_scs- List containing side chain occupancy values
+                #    issue link - https://code.osuosl.org/issues/17565
+                occ_m, occ_scs = [], []
+                for name in atoms:
+                    if name in ('N', 'CA', 'C', 'O', 'OXT', 'CB'):
+                        occ_m.append(atoms[name].get_occupancy())
+                    elif name[0] == 'H':
+                        continue
+                    else:
+                        occ_scs.append(atoms[name].get_occupancy())
+
+                if occ_m != []:
+                    res_dict['occm'] = min(occ_m)
+
+                if occ_scs != []:
+                    res_dict['occscs'] = min(occ_scs)
+
+                if res_dict['aa'] == 'g' or res_dict['aa'] == 'a':
+                    res_dict['occscs'] = 1.0
 
                 # CHI corrections - Some atoms have symettrical values
                 # in the sidechain that aren't guarunteed to be listed
@@ -667,7 +900,7 @@ def parseWithBioPython(path, props, chains_filter=None):
                 # something has gone wrong in the current residue
                 # indicating that it should be excluded from processing
                 # log a warning
-                print 'Invalid residue! protein: %s chain: %s residue: %s exception: %s' % (path, chain_id, res.get_id(), e)
+                logger.warning('invalid residue! chain {} residue: {} exception: {}'.format(chain_id, res.get_id(), e))
                 if oldC:
                     residues[res_old_id]['terminal_flag'] = True
                     newID += 1
@@ -677,8 +910,13 @@ def parseWithBioPython(path, props, chains_filter=None):
                 prev       = None
                 if res_id in residues:
                     del residues[res_id]
+                # Disordered residues are stored under old_id, not res_id.
+                # First check to see if old_id is defined.
+                if 'old_id' in vars():
+                    if old_id in residues:
+                        del residues[old_id]
 
-        print 'Processed %s residues' % len(residues)
+        logger.debug('processed {} residues'.format(len(residues)))
 
     return props
 
@@ -819,47 +1057,46 @@ if __name__ == '__main__':
     """
     Run if file is executed from the command line
     """
-    import logging
 
-    def process_args(args):
-        return {'code':args[0],
-                'chains':[c for c in args[1]],
-                'threshold':float(args[2]),
-                'resolution':float(args[3]),
-                'rfactor':float(args[4]),
-                'rfree':float(args[5])
-                }
+    # Parse command line options.
+    parser = argparse.ArgumentParser(usage='')
+    parser.add_argument('--pipein', help='accept protein values via stdin', nargs='?', type=argparse.FileType('r'), const=sys.stdin)
+    parser.add_argument('--debug', help='enable debug logging to console', action='store_true')
+    parser.add_argument('--logfile', help='write debug logs to file', type=argparse.FileType('wb', 0))
+    # JMT: tasks without pipein not supported at the moment
+    # JMT: code chains threshold resolution rfactor rfree [repeat]
+    # chains are a string of chain ids: ABCXYZ
+    args = parser.parse_args()
 
-    task = ProcessPDBTask()
+    # Configure logging.
+    if args.logfile:
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s %(name)-4s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S',
+                            stream=args.logfile)
 
-    logging.basicConfig(filename='ProcessPDB.log',level=logging.DEBUG)
-    task.logger = logging
-    #task.parent = WorkerProxy()
+    # Log all info messages to the console.
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG if args.debug else logging.INFO)
+    formatter = logging.Formatter('%(name)-4s %(levelname)-8s %(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
 
     pdbs = []
-
-    argv = sys.argv
-    if len(argv) == 1:
-        print 'Usage:'
-        print '   ProcessPDBTask code chains threshold resolution rfactor rfree [repeat]'
-        print '       chains are a string of chain ids: ABCXYZ'
-        print ''
-        print '   <cmd> | ProcessPDBTask --pipein'
-        print '   piped protein values must be separated by newlines'
-        sys.exit(0)
-
-    elif len(argv) == 2 and argv[1] == '--pipein':
-        for line in sys.stdin:
-            pdbs.append(process_args(line.split(' ')))
-
+    if args.pipein:
+        for line in args.pipein:
+            pdbs.append(line)
     else:
-        for i in range(1,len(argv),6):
-            try:
-                print argv[i:i+6]
-                pdbs.append(process_args(argv[i:i+6]))
-            except IndexError, e:
-                print e
-                print 'Usage: ProcessPDBTask.py code chain threshold resolution rfactor rfree...'
-                sys.exit(0)
+        print 'PDBs from args not currently supported.'
+        sys.exit(0)
+        # for i in range(1,len(argv),6):
+        #     try:
+        #         line = ' '.join(argv[i:i+6])
+        #         pdbs.append(line)
+        #     except IndexError, e:
+        #         print e
+        #         print 'Usage: ProcessPDBTask.py code chain threshold resolution rfactor rfree...'
+        #         sys.exit(0)
 
-    task.work(**{'data':pdbs})
+    task = ProcessPDBTask()
+    task.work(pdbs)
