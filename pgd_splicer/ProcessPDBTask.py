@@ -1062,25 +1062,33 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(usage='')
     parser.add_argument('--pipein', help='accept protein values via stdin', nargs='?', type=argparse.FileType('r'), const=sys.stdin)
     parser.add_argument('--debug', help='enable debug logging to console', action='store_true')
-    parser.add_argument('--logfile', help='write debug logs to file', type=argparse.FileType('wb', 0))
+    parser.add_argument('--logfile', help='write debug logs to file')
     # JMT: tasks without pipein not supported at the moment
     # JMT: code chains threshold resolution rfactor rfree [repeat]
     # chains are a string of chain ids: ABCXYZ
     args = parser.parse_args()
 
-    # Configure logging.
-    if args.logfile:
-        logging.basicConfig(level=logging.DEBUG,
-                            format='%(asctime)s %(name)-4s %(levelname)-8s %(message)s',
-                            datefmt='%Y-%m-%d %H:%M:%S',
-                            stream=args.logfile)
+    # Get the root logger
+    logger = logging.getLogger()
 
-    # Log all info messages to the console.
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG if args.debug else logging.INFO)
+    # logger listens to DEBUG and above
+    logger.setLevel(logging.DEBUG)
+
+    # Configure logging
+    # for console
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG if args.debug else logging.INFO)
     formatter = logging.Formatter('%(name)-4s %(levelname)-8s %(message)s')
-    console.setFormatter(formatter)
-    logging.getLogger('').addHandler(console)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # for logfile 
+    if args.logfile:
+        file_handler = logging.FileHandler(args.logfile)
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(fmt='%(asctime)s %(name)-4s %(levelname)-8s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
     pdbs = []
     if args.pipein:
