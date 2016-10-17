@@ -486,16 +486,17 @@ class PGDSelect(Select):
                 res_occ = {}
                 atoms = []
                 for atom in residue.get_unpacked_list():
-                    atoms.append('{}|{}'.format(atom.name, atom.get_altloc()))
-                    if atom.is_disordered():
-                        name = atom.name
-                        try:
-                            res_occ[name]
-                        except KeyError:
-                            res_occ[name] = {}
-                        altloc = atom.get_altloc()
-                        occ = atom.get_occupancy()
-                        res_occ[name].update({altloc: occ})
+                    if atom.name[0] != 'H':
+                        atoms.append('{}|{}'.format(atom.name, atom.get_altloc()))
+                        if atom.is_disordered():
+                            name = atom.name
+                            try:
+                                res_occ[name]
+                            except KeyError:
+                                res_occ[name] = {}
+                            altloc = atom.get_altloc()
+                            occ = atom.get_occupancy()
+                            res_occ[name].update({altloc: occ})
                 self.logger.debug("atom list: {}".format(res_occ))
 
                 occ_list = {}
@@ -563,14 +564,17 @@ class PGDSelect(Select):
         represent that atom in the residue.
         """
 
-        if atom.is_disordered():
-            if self.best_atoms[atom.get_parent()][atom.name] == atom.get_altloc():
-                atom.set_altloc(' ')
-                return True
+        if atom.name[0] != 'H':
+            if atom.is_disordered():
+                if self.best_atoms[atom.get_parent()][atom.name] == atom.get_altloc():
+                    atom.set_altloc(' ')
+                    return True
+                else:
+                    return False
             else:
-                return False
+                return True
         else:
-            return True
+            return False
 
 
 def parseWithBioPython(code, props, chains_filter=None):
