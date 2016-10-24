@@ -107,7 +107,7 @@ class PGDSelect(Select):
                     except KeyError:
                         best_altlocs[resseq] = {residue: occ_altloc}
                     best_atoms[residue] = {}
-                    break
+                    continue
 
                 occ_list = {}
                 for occ_vals in [res_occ[k] for k in res_occ if res_occ[k]]:
