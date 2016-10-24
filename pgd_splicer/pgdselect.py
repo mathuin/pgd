@@ -97,6 +97,18 @@ class PGDSelect(Select):
                 self.logger.debug("atom list: {}".format(res_occ))
                 self.logger.debug("atoms: {}".format(atoms))
 
+                # 4P3H A/154 has only one disordered atom: hydrogen.
+                # Thus it is considered ordered for our purpose.
+                if res_occ == {}:
+                    self.logger.debug("residue {} has no relevant disordered atoms".format(residue))
+                    occ_altloc = 1.0
+                    try:
+                        best_altlocs[resseq].update({residue: occ_altloc})
+                    except KeyError:
+                        best_altlocs[resseq] = {residue: occ_altloc}
+                    best_atoms[residue] = {}
+                    break
+
                 occ_list = {}
                 for occ_vals in [res_occ[k] for k in res_occ if res_occ[k]]:
                     for altloc in occ_vals:
@@ -128,7 +140,7 @@ class PGDSelect(Select):
                         self.logger.debug("best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq]))
                         break
                 else:
-                    self.logger.debug("residue {} has no altlocs unacceptable".format(residue))
+                    self.logger.debug("residue {} has no acceptable altlocs".format(residue))
                     self.no_acceptable_altlocs.append(residue)
 
         # The residue with the best altloc has the best atoms.
