@@ -26,6 +26,9 @@ class Protein(models.Model):
     def __unicode__(self):
         return self.code
 
+    def __str__(self):
+        return "<Protein %s>" % self.code
+
 # Chain model
 # Contains information about chains within a protein
 # 
@@ -42,6 +45,9 @@ class Chain (models.Model):
     # JMT: upgrade to Django 1.6 caused deadlocks on insert
     class Meta:
         select_on_save = True
+
+    def __str__(self):
+        return "<Chain protein= code=%s>" % (self.protein.code, self.code)
 
 
 class Sidechain_ARG(models.Model):
@@ -365,8 +371,8 @@ class Residue(models.Model):
         else:
             return object.__getattribute__(self, name)
 
-
-
+    def __str__(self):
+        return "<Residue protein=%s chain=%s oldID=%s>" % (self.protein.code, self.chain.code, self.oldID)
 
 
 class Segmenter():

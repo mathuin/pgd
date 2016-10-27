@@ -278,14 +278,14 @@ def process_pdb(pdb):
                 # 4a) find the residue object so it can be updated or create a new one
                 try:
                     residue = chain.residues.get(oldID=str(residue_props['oldID']))
-                    logger.debug('{}: residue exists'.format(residue))
+                    logger.debug('residue {} exists'.format(residue))
                 except ResidueModel.DoesNotExist:
                     #not found, create new residue
                     residue = ResidueModel()
                     residue.protein = protein
                     residue.chain   = chain
                     residue.chainID = chain.id[4]
-                    # logger.debug('{}: residue does not exist'.format(residue))
+                    # logger.debug('residue {} does not exist'.format(residue))
 
                 # 4b) copy properties into a residue object
                 #     property keys should match property name in object
@@ -311,6 +311,7 @@ def process_pdb(pdb):
 
                 # 4e) save
                 residue.save()
+                logger.debug('residue {} saved'.format(residue))
                 chain.residues.add(residue)
 
                 # 4f) Update old_residue.next

@@ -16,17 +16,24 @@ class PGDSelect(Select):
             self.logger = logger
         else:
             self.logger = logging.getLogger('').addHandler(logging.NullHandler())
-        # self.not_in_AA3to1 = []
+        self.not_in_AA3to1 = []
         self.has_hetflag = []
         self.missing_atom = []
         self.no_acceptable_altlocs = []
+        self.not_disordered = []
         self.logger.debug("finished init")
 
     def __del__(self):
-        # self.logger.info("residues not in AA3to1: {}".format(len(self.not_in_AA3to1)))
-        self.logger.info("residues with hetflags: {}".format(len(self.has_hetflag)))
-        self.logger.info("residues missing atoms: {}".format(len(self.missing_atom)))
-        self.logger.info("residues with no acceptable altlocs: {}".format(len(self.no_acceptable_altlocs)))
+        if self.not_disordered:
+            self.logger.info("residues not disordered: {}".format(len(self.not_disordered)))
+        if self.has_hetflag:
+            self.logger.info("residues with hetflags: {}".format(len(self.has_hetflag)))
+        if self.missing_atom:
+            self.logger.info("residues missing atoms: {}".format(len(self.missing_atom)))
+        if self.no_acceptable_altlocs:
+            self.logger.info("residues with no acceptable altlocs: {}".format(len(self.no_acceptable_altlocs)))
+        if self.not_in_AA3to1:
+            self.logger.info("residues not in AA3to1: {}".format(len(self.not_in_AA3to1)))
 
     def has_mainchain_atoms(self, residue):
         atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
@@ -78,10 +85,10 @@ class PGDSelect(Select):
                 continue
 
             # Calculate occupancy for disordered residues.
+            res_occ = {}
+            atoms = []
             if residue.is_disordered():
-                self.logger.debug("residue: {}".format(residue))
-                res_occ = {}
-                atoms = []
+                self.logger.debug("residue: {} is disordered".format(residue))
                 for atom in residue.get_unpacked_list():
                     if atom.element != 'H':
                         name = atom.name
@@ -97,18 +104,14 @@ class PGDSelect(Select):
                 self.logger.debug("atom list: {}".format(res_occ))
                 self.logger.debug("atoms: {}".format(atoms))
 
-                # 4P3H A/154 has only one disordered atom: hydrogen.
-                # Thus it is considered ordered for our purpose.
-                if res_occ == {}:
-                    self.logger.debug("residue {} has no relevant disordered atoms".format(residue))
-                    occ_altloc = 1.0
-                    try:
-                        best_altlocs[resseq].update({residue: occ_altloc})
-                    except KeyError:
-                        best_altlocs[resseq] = {residue: occ_altloc}
-                    best_atoms[residue] = {}
-                    continue
-
+            # 4P3H A/154 has only one disordered atom: hydrogen.
+            # Thus it is considered ordered for our purpose.
+            if res_occ == {}:
+                self.logger.debug("residue {} has no relevant disordered atoms".format(residue))
+                self.best_atoms[residue] = {}
+                self.not_disordered.append(residue)
+                continue
+            else:
                 occ_list = {}
                 for occ_vals in [res_occ[k] for k in res_occ if res_occ[k]]:
                     for altloc in occ_vals:
@@ -160,14 +163,7 @@ class PGDSelect(Select):
         represent that residue in the chain.
         """
 
-        if residue.is_disordered():
-            return residue in self.best_atoms
-        else:
-            if residue in self.has_hetflag:
-                return False
-            if residue in self.missing_atom:
-                return False
-            return True
+        return residue in self.best_atoms
 
     def accept_atom(self, atom):
         """
