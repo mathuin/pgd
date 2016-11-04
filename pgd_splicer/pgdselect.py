@@ -70,6 +70,9 @@ class PGDSelect(Select):
                 self.logger.debug("residue {} has hetflag".format(residue))
                 self.has_hetflag.append(residue)
                 continue
+            reskey = '{}'.format(resseq)
+            if icode != ' ':
+                reskey += '{}'.format(icode)
 
             # Only process residues in AA3to1.
             # resname = residue.resname
@@ -135,24 +138,24 @@ class PGDSelect(Select):
                             self.logger.debug("altloc {} missing atoms".format(best_altloc))
                             break
                     else:
-                        # Store the best altloc for all residues sharing this sequence number.
+                        # Store the best altloc for all residues sharing this sequence number and icode.
                         try:
-                            best_altlocs[resseq].update({residue: occ_altloc})
+                            best_altlocs[reskey].update({residue: occ_altloc})
                         except KeyError:
-                            best_altlocs[resseq] = {residue: occ_altloc}
-                        self.logger.debug("best_altlocs[{}] = {}".format(resseq, best_altlocs[resseq]))
+                            best_altlocs[reskey] = {residue: occ_altloc}
+                        self.logger.debug("best_altlocs[{}] = {}".format(reskey, best_altlocs[reskey]))
                         break
                 else:
                     self.logger.debug("residue {} has no acceptable altlocs".format(residue))
                     self.no_acceptable_altlocs.append(residue)
 
         # The residue with the best altloc has the best atoms.
-        for resseq, altlocs in best_altlocs.iteritems():
-            altlocs = best_altlocs[resseq]
+        for reskey, altlocs in best_altlocs.iteritems():
+            altlocs = best_altlocs[reskey]
             best_residue = max(altlocs, key=altlocs.get)
-            self.logger.debug("best residue for {} is {}".format(resseq, best_residue))
+            self.logger.debug("best residue for {} is {}".format(reskey, best_residue))
             self.best_atoms[best_residue] = best_atoms[best_residue]
-            self.logger.debug("best atoms for {} are {}".format(resseq, best_atoms[best_residue]))
+            self.logger.debug("best atoms for {} are {}".format(reskey, best_atoms[best_residue]))
 
         return True
 
