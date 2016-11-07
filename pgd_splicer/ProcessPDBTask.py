@@ -32,6 +32,7 @@ import logging
 import Bio.PDB
 from Bio.PDB import calc_angle as pdb_calc_angle, PDBIO
 from Bio.PDB import calc_dihedral as pdb_calc_dihedral
+from Bio.Data.IUPACData import protein_letters_3to1
 from django.db import transaction
 
 from tools import localfile
@@ -61,49 +62,26 @@ def NO_VALUE(field):
     else:
         return None
 
-AA3to1 =  {
-    'ALA' : 'a',
-    'ARG' : 'r',
-    'ASN' : 'n',
-    'ASP' : 'd',
-    'CYS' : 'c',
-    'GLU' : 'e',
-    'GLN' : 'q',
-    'GLY' : 'g',
-    'HIS' : 'h',
-    'ILE' : 'i',
-    'LEU' : 'l',
-    'LYS' : 'k',
-    'MET' : 'm',
-    'PHE' : 'f',
-    'PRO' : 'p',
-    'SER' : 's',
-    'THR' : 't',
-    'TRP' : 'w',
-    'TYR' : 'y',
-    'VAL' : 'v',
-}
-
-
+# Consider replacing this with something that iterates over protein_letters_1to3
 aa_class = {
-    'r':(Sidechain_ARG,'sidechain_ARG'),
-    'n':(Sidechain_ASN,'sidechain_ASN'),
-    'd':(Sidechain_ASP,'sidechain_ASP'),
-    'c':(Sidechain_CYS,'sidechain_CYS'),
-    'q':(Sidechain_GLN,'sidechain_GLN'),
-    'e':(Sidechain_GLU,'sidechain_GLU'),
-    'h':(Sidechain_HIS,'sidechain_HIS'),
-    'i':(Sidechain_ILE,'sidechain_ILE'),
-    'l':(Sidechain_LEU,'sidechain_LEU'),
-    'k':(Sidechain_LYS,'sidechain_LYS'),
-    'm':(Sidechain_MET,'sidechain_MET'),
-    'f':(Sidechain_PHE,'sidechain_PHE'),
-    'p':(Sidechain_PRO,'sidechain_PRO'),
-    's':(Sidechain_SER,'sidechain_SER'),
-    't':(Sidechain_THR,'sidechain_THR'),
-    'w':(Sidechain_TRP,'sidechain_TRP'),
-    'y':(Sidechain_TYR,'sidechain_TYR'),
-    'v':(Sidechain_VAL,'sidechain_VAL')
+    'R': (Sidechain_ARG, 'sidechain_ARG'),
+    'N': (Sidechain_ASN, 'sidechain_ASN'),
+    'D': (Sidechain_ASP, 'sidechain_ASP'),
+    'C': (Sidechain_CYS, 'sidechain_CYS'),
+    'Q': (Sidechain_GLN, 'sidechain_GLN'),
+    'E': (Sidechain_GLU, 'sidechain_GLU'),
+    'H': (Sidechain_HIS, 'sidechain_HIS'),
+    'I': (Sidechain_ILE, 'sidechain_ILE'),
+    'L': (Sidechain_LEU, 'sidechain_LEU'),
+    'K': (Sidechain_LYS, 'sidechain_LYS'),
+    'M': (Sidechain_MET, 'sidechain_MET'),
+    'F': (Sidechain_PHE, 'sidechain_PHE'),
+    'P': (Sidechain_PRO, 'sidechain_PRO'),
+    'S': (Sidechain_SER, 'sidechain_SER'),
+    'T': (Sidechain_THR, 'sidechain_THR'),
+    'W': (Sidechain_TRP, 'sidechain_TRP'),
+    'Y': (Sidechain_TYR, 'sidechain_TYR'),
+    'V': (Sidechain_VAL, 'sidechain_VAL')
 }
 
 
@@ -383,7 +361,7 @@ def amino_present(s):
     See #17223 for details.
     """
 
-    return any(amino in s for amino in AA3to1)
+    return any(amino.upper() in s for amino in protein_letters_3to1)
 
 def hetatm_amino(s):
     """
@@ -491,10 +469,10 @@ def parseWithBioPython(code, props, chains_filter=None):
                 if hetflag != ' ':
                     raise InvalidResidueException("HetCode %r" % hetflag)
 
-                resname = res.resname
+                resname = res.resname.title()
 
                 # We can't deal with residues that aren't of amino acids.
-                if resname not in AA3to1:
+                if resname not in protein_letters_3to1:
                     raise InvalidResidueException("Bad amino acid %r" %
                                                  resname)
 
@@ -544,7 +522,7 @@ def parseWithBioPython(code, props, chains_filter=None):
 
                 res_dict['chain'] = chain
                 res_dict['ss'] = secondary_structure
-                res_dict['aa'] = AA3to1[resname]
+                res_dict['aa'] = protein_letters_3to1[resname]
                 res_dict['h_bond_energy'] = 0.00
 
                 # Get Vectors for mainchain atoms and calculate geometric angles,

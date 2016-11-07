@@ -362,7 +362,7 @@ class SearchParserValidation(LiveServerTestCase):
         )
 
     def testSearchAa(self):
-        aa_range = ('a', 'r', 'n', 'd', 'c')
+        aa_range = ('A', 'R', 'N', 'D', 'C')
         chainList = {}
         for t in zip(range(1,6), aa_range):
             i,aa_choice = t
@@ -400,7 +400,7 @@ class SearchParserValidation(LiveServerTestCase):
             )
 
         data['aa_i_0'] = 1
-        aa_choice = ('a', 'r', 'n')
+        aa_choice = ('A', 'R', 'N')
         data['aa_0'] = (aa_choice)
         search.data = data
         #data['aa_i'] = 0
@@ -412,7 +412,7 @@ class SearchParserValidation(LiveServerTestCase):
         )
 
         data['aa_i_0'] = 0
-        aa_choice = ('a', 'r', 'n')
+        aa_choice = ('A', 'R', 'N')
         data['aa_0'] = (aa_choice)
         search.data = data
         #data['aa_i'] = 0
@@ -776,7 +776,7 @@ class SeleniumTests(LiveServerTestCase):
         # Each row has one element for each angle or length.
 
         ss_test_values = {
-            "aa_r": {
+            "aa_R": {
                 "CB_CG": {
                     "avg": "1.523",
                     "stddev": "0.013",

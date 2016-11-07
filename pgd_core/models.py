@@ -1,8 +1,9 @@
 import math
 
 from django.db import models
-from pgd_constants import AA_CHOICES, SS_CHOICES, AA_CHOICES_DICT
+from pgd_constants import AA_CHOICES, SS_CHOICES
 from django.contrib.auth.models import User
+from Bio.Data.IUPACData import protein_letters_1to3
 
 
 # Protein model
@@ -366,7 +367,7 @@ class Residue(models.Model):
 
     def __getattribute__(self,name):
         if name == 'aa_full':
-            return AA_CHOICES_DICT[self.aa]
+            return protein_letters_1to3[self.aa]
         # normal attribute
         else:
             return object.__getattribute__(self, name)

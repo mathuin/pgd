@@ -10,9 +10,10 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 
 from pgd_core.models import Protein,Residue
-from pgd_constants import AA_CHOICES, AA_CHOICES_DICT, SS_CHOICES
+from pgd_constants import AA_CHOICES, SS_CHOICES
 from pgd_splicer.sidechain import bond_lengths_string_dict, bond_angles_string_dict
 from pgd_core.util import residue_indexes
+from Bio.Data.IUPACData import protein_letters_1to3
 
 
 range_re = re.compile("(?<=[^-<>=])-")
@@ -233,7 +234,7 @@ class Search(models.Model):
             # ... handle sidechain query strings ...
             sidechain_fields = []
             if search_res.aa:
-                for aa_type in [AA_CHOICES_DICT[aa].upper() for aa in search_res.aa]:
+                for aa_type in [protein_letters_1to3[aa].upper() for aa in search_res.aa]:
                     if aa_type in bond_lengths_string_dict:
                         field_base = '%s__%%s' % aa_type
                         for field in bond_lengths_string_dict[aa_type]:

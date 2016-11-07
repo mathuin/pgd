@@ -132,7 +132,7 @@ def renderToPNG(request):
         height = 480
 
     writer = io.BytesIO()
-    response = HttpResponse(mimetype="image/png")
+    response = HttpResponse(content_type="image/png")
     response['Content-Disposition'] = 'attachment; filename="plot.png"'
     svg.render_png(writer, width, height+30)
     response.write(writer.getvalue())

@@ -1,30 +1,8 @@
-# The possible values for the 'aa' field (in Protein and elsewhere)
-AA_CHOICES = (
-    ('a', 'Ala'),
-    ('r', 'Arg'),
-    ('n', 'Asn'),
-    ('d', 'Asp'),
-    ('c', 'Cys'),
-    ('q', 'Gln'),
-    ('e', 'Glu'),
-    ('g', 'Gly'),
-    ('h', 'His'),
-    ('i', 'Ile'),
-    ('l', 'Leu'),
-    ('k', 'Lys'),
-    ('m', 'Met'),
-    ('f', 'Phe'),
-    ('p', 'Pro'),
-    ('s', 'Ser'),
-    ('t', 'Thr'),
-    ('w', 'Trp'),
-    ('y', 'Tyr'),
-    ('v', 'Val'),
-)
+from Bio.Data.IUPACData import protein_letters_1to3
+import operator
 
-AA_CHOICES_DICT = {}
-for choice in AA_CHOICES:
-    AA_CHOICES_DICT[choice[0]] = choice[1]
+# The possible values for the 'aa' field (in Protein and elsewhere)
+AA_CHOICES = sorted(protein_letters_1to3.items(), key=operator.itemgetter(1))
 
 # The possible values for the 'ss' field (in Protein and elsewhere)
 '''SS_CHOICES = (

@@ -7,12 +7,13 @@ from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
 from django.template import RequestContext
-from pgd_constants import AA_CHOICES, SS_CHOICES, AA_CHOICES_DICT
+from pgd_constants import AA_CHOICES, SS_CHOICES
 from pgd_search.statistics.aggregates import *
 from pgd_search.statistics.directional_stddev import *
 from pgd_search.statistics.form import StatsForm
 from pgd_search.views import settings_processor
 from pgd_splicer.sidechain import bond_angles_string_dict, bond_lengths_string_dict
+from Bio.Data.IUPACData import protein_letters_1to3
 
 stat_attributes = [('L1',u'C<sup>-1</sup>N'),
                         ('L2',u'NC<sup>&alpha;</sup>'),
@@ -54,7 +55,7 @@ ANGLES = [('a1',u'C<sup>-1</sup>NC<sup>&alpha;</sup>'),
 # rebuild bond angle list so they work with single letter codes
 BOND_ANGLES = {}
 BOND_LENGTHS = {}
-for k, v in AA_CHOICES_DICT.items():
+for k, v in protein_letters_1to3.items():
     v = v.upper()
     if v in bond_lengths_string_dict:
         BOND_LENGTHS[k] = [s.replace('-','_') for s in bond_lengths_string_dict[v]]
@@ -207,7 +208,7 @@ def calculate_aa_statistics(queryset, aa, iIndex=0):
     field_prefix = '%s%%s' % prefix  
     
     queryset = queryset.filter(**{'%saa'%prefix:aa})
-    full_aa = AA_CHOICES_DICT[aa].upper()
+    full_aa = protein_letters_1to3[aa].upper()
     
     angles = []
     if aa in BOND_LENGTHS:

@@ -1,4 +1,5 @@
 import logging
+from Bio.Data.IUPACData import protein_letters_3to1
 from Bio.PDB.PDBIO import Select
 
 
@@ -16,7 +17,7 @@ class PGDSelect(Select):
             self.logger = logger
         else:
             self.logger = logging.getLogger('').addHandler(logging.NullHandler())
-        self.not_in_AA3to1 = []
+        self.not_in_pl3to1 = []
         self.has_hetflag = []
         self.missing_atom = []
         self.no_acceptable_altlocs = []
@@ -32,8 +33,8 @@ class PGDSelect(Select):
             self.logger.info("residues missing atoms: {}".format(len(self.missing_atom)))
         if self.no_acceptable_altlocs:
             self.logger.info("residues with no acceptable altlocs: {}".format(len(self.no_acceptable_altlocs)))
-        if self.not_in_AA3to1:
-            self.logger.info("residues not in AA3to1: {}".format(len(self.not_in_AA3to1)))
+        if self.not_in_pl3to1:
+            self.logger.info("residues not in protein_letters_3to1: {}".format(len(self.not_in_pl3to1)))
 
     def has_mainchain_atoms(self, residue):
         atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
@@ -74,12 +75,12 @@ class PGDSelect(Select):
             if icode != ' ':
                 reskey += '{}'.format(icode)
 
-            # Only process residues in AA3to1.
-            # resname = residue.resname
-            # if resname not in AA3to1:
-            #     self.logger.debug("residue {} not in AA3to1".format(residue))
-            #     self.not_in_AA3to1.append(residue)
-            #     continue
+            # Only process residues in protein_letters_3to1.
+            resname = residue.resname.title()
+            if resname not in protein_letters_3to1:
+                self.logger.debug("residue {} not in protein_letters_3to1".format(residue))
+                self.not_in_pl3to1.append(residue)
+                continue
 
             # Only process residues with all atoms.
             if not self.has_mainchain_atoms(residue):

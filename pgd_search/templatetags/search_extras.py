@@ -3,8 +3,8 @@ from django.utils.safestring import mark_safe
 from django import template
 register = template.Library()
 
-from pgd_constants import AA_CHOICES_DICT
 from pgd_search.plot.PlotForm import PROPERTY_CHOICES_DICT
+from Bio.Data.IUPACData import protein_letters_1to3
 
 
 ROMAN_TO_GREEK = dict(
@@ -24,7 +24,7 @@ def full_aa(value):
     """
     Filter that returns the full AA code from the 1 letter AA code
     """
-    return AA_CHOICES_DICT[value]
+    return protein_letters_1to3[value]
 register.filter('full_aa',full_aa)
 
 
