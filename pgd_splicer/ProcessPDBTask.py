@@ -602,8 +602,6 @@ def parseWithBioPython(code, props, chains_filter=None):
                 for name in atoms:
                     if name in ('N', 'CA', 'C', 'O', 'OXT'):
                         main_chain.append(atoms[name].get_bfactor())
-                    elif name[0] == 'H':
-                        continue
                     else:
                         side_chain.append(atoms[name].get_bfactor())
 
@@ -624,8 +622,6 @@ def parseWithBioPython(code, props, chains_filter=None):
                 for name in atoms:
                     if name in ('N', 'CA', 'C', 'O', 'OXT', 'CB'):
                         occ_m.append(atoms[name].get_occupancy())
-                    elif name[0] == 'H':
-                        continue
                     else:
                         occ_scs.append(atoms[name].get_occupancy())
 
