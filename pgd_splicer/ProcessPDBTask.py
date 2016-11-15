@@ -402,15 +402,15 @@ def parseWithBioPython(code, props, chains_filter=None):
     # HETATM pattern. This is largely for 2VQ1, see #8319 for details.
     # Also remove any ATOM lines with invalid amino acids.
     # See #17223 for details.
-    for line in gunzipped:
-        if not hetatm_amino(line) and not atom_noamino(line):
-            decompressed.write(line)
+    # for line in gunzipped:
+    #     if not hetatm_amino(line) and not atom_noamino(line):
+    #         decompressed.write(line)
 
     # Be kind; rewind.
-    decompressed.seek(0)
+    # decompressed.seek(0)
 
     # Open structure for pre-cleaned PDB file.
-    pre_structure = Bio.PDB.PDBParser(QUIET=True).get_structure(code, decompressed.name)
+    pre_structure = Bio.PDB.PDBParser(QUIET=True).get_structure(code, gunzipped)
 
     # write new PDB based on conformation changes
     io = PDBIO()

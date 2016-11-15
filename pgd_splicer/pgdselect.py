@@ -36,6 +36,9 @@ class PGDSelect(Select):
         if self.not_in_pl3to1:
             self.logger.info("residues not in protein_letters_3to1: {}".format(len(self.not_in_pl3to1)))
 
+    def is_hydrogen(self, atom):
+        return (atom.element == 'H' or atom.element == 'D')
+
     def has_mainchain_atoms(self, residue):
         atoms = {atom.name: atom for atom in residue.get_unpacked_list()}
         return (('N' in atoms) and ('CA' in atoms) and ('C' in atoms) and ('O' in atoms))
@@ -94,7 +97,7 @@ class PGDSelect(Select):
             if residue.is_disordered():
                 self.logger.debug("residue: {} is disordered".format(residue))
                 for atom in residue.get_unpacked_list():
-                    if atom.element != 'H':
+                    if not self.is_hydrogen(atom):
                         name = atom.name
                         altloc = atom.get_altloc()
                         atoms.append('{}|{}'.format(name, altloc))
@@ -176,7 +179,7 @@ class PGDSelect(Select):
         represent that atom in the residue.
         """
 
-        if atom.element != 'H':
+        if not self.is_hydrogen(atom):
             if atom.is_disordered():
                 if self.best_atoms[atom.get_parent()][atom.name] == atom.get_altloc():
                     atom.set_altloc(' ')
