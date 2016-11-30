@@ -1,7 +1,5 @@
 FROM centos:7
 
-MAINTAINER OSU OSL support@osuosl.org
-
 EXPOSE 8000
 
 # Dockerfiles do not support "here documents"
